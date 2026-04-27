@@ -5823,7 +5823,7 @@
                 if (tlIsDraggingTimeline) { tlIsDraggingTimeline = false; tlScrollEl.style.cursor = ''; tlHideTip(); }
             });
 
-            // Mouse wheel: zoom in tick area, horizontal scroll elsewhere
+            // Mouse wheel: zoom in tick area, vertical scroll elsewhere (not horizontal)
             tlScrollEl.addEventListener('wheel', function(e) {
                 if (e.target.closest('.t-row-label') || e.target.closest('.t-group-header')) return;
                 // Check if mouse is over the tick area (date header)
@@ -5851,11 +5851,8 @@
                     tlUpdateSliderUI();
                     tlWheelJustFired = true;
                     tlScheduleRender();
-                } else {
-                    e.preventDefault();
-                    tlScrollEl.scrollLeft += e.deltaY !== 0 ? e.deltaY : e.deltaX;
-                    tlWheelJustFired = true;
                 }
+                // Outside tick area: let default vertical scroll happen (do nothing)
             }, { passive: false });
 
             // Click on tick area to zoom in with bounce animation, centered on mouse
