@@ -1186,24 +1186,31 @@
 
                 // 3. 生成文件名
                 var scheduleFile = 'schedule_' + newVersion + '_' + timestamp + '.csv';
-                var settingsFile = 'settings_' + newVersion + '_' + timestamp + '.json';
 
                 // 4. 生成内容
                 var csvContent = generateScheduleCSV();
                 var jsonContent = generateSettingsJSON();
 
-                // 5. 上传文件到 data/{versionDir}/
+                // 5. 上传 schedule.csv 到 data/{versionDir}/
                 var commitMessage = '版本 ' + newVersion + ' - ' + new Date().toLocaleString('zh-CN');
 
                 await uploadToGitHub(versionDir + '/' + scheduleFile, csvContent, null, commitMessage);
-                await uploadToGitHub(versionDir + '/' + settingsFile, jsonContent, null, commitMessage);
 
-                // 6. 更新 latest.json
+                // 6. 更新 settings.json（存储在 data 根目录，不随版本变化）
+                var settingsSha = null;
+                try {
+                    var existingSettings = await getGitHubFile('settings.json');
+                    settingsSha = existingSettings.sha;
+                } catch (e) {
+                    console.log('settings.json 不存在，将创建新文件');
+                }
+                await uploadToGitHub('settings.json', jsonContent, settingsSha, '更新配置设置');
+
+                // 7. 更新 latest.json
                 var latestContent = JSON.stringify({
                     version: newVersion,
                     path: versionDir,
                     scheduleFile: scheduleFile,
-                    settingsFile: settingsFile,
                     timestamp: timestamp,
                     updateTime: new Date().toLocaleString('zh-CN')
                 }, null, 2);
@@ -1219,7 +1226,7 @@
 
                 await uploadToGitHub('latest.json', latestContent, latestSha, '更新最新版本指针 → ' + newVersion);
 
-                // 7. 更新界面
+                // 8. 更新界面
                 updateVersionDisplay(newVersion);
 
                 // 更新数据快照（保存后不再视为本地修改）
@@ -1986,15 +1993,18 @@
             }
 
             try {
-                // 获取 settings 文件名
-                var settingsFileName = scheduleFileName.replace('schedule_', 'settings_').replace('.csv', '.json');
-
-                // 加载文件
+                // 加载 schedule.csv 从版本目录
                 var schedulePath = _githubConfig.path + '/' + versionDir + '/' + scheduleFileName;
-                var settingsPath = _githubConfig.path + '/' + versionDir + '/' + settingsFileName;
-
                 var scheduleFile = await getGitHubFile(schedulePath);
-                var settingsFile = await getGitHubFile(settingsPath);
+
+                // 加载 settings.json 从 data 根目录
+                var settingsFile;
+                try {
+                    settingsFile = await getGitHubFile('settings.json');
+                } catch (e) {
+                    console.log('settings.json 不存在，使用默认设置');
+                    settingsFile = { content: btoa('{}') };
+                }
 
                 // 解析内容
                 var csvContent = decodeBase64(scheduleFile.content);
