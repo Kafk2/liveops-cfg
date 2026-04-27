@@ -1319,6 +1319,7 @@
                 await uploadToGitHub(versionDir + '/' + scheduleFile, csvContent, null, commitMessage);
 
                 // 6. 更新 settings.json（存储在 data 根目录，不随版本变化）
+                // 重新获取最新 SHA 避免冲突
                 var settingsSha = null;
                 try {
                     var existingSettings = await getGitHubFile('settings.json');
@@ -1326,7 +1327,18 @@
                 } catch (e) {
                     console.log('settings.json 不存在，将创建新文件');
                 }
-                await uploadToGitHub('settings.json', jsonContent, settingsSha, '更新配置设置');
+                try {
+                    await uploadToGitHub('settings.json', jsonContent, settingsSha, '更新配置设置');
+                } catch (e) {
+                    // 如果 SHA 冲突，重新获取并重试一次
+                    if (e.message && e.message.indexOf('does not match') >= 0) {
+                        console.log('settings.json SHA 冲突，重新获取...');
+                        var retrySettings = await getGitHubFile('settings.json');
+                        await uploadToGitHub('settings.json', jsonContent, retrySettings.sha, '更新配置设置');
+                    } else {
+                        throw e;
+                    }
+                }
 
                 // 7. 更新 latest.json
                 var latestContent = JSON.stringify({
@@ -1337,7 +1349,7 @@
                     updateTime: new Date().toLocaleString('zh-CN')
                 }, null, 2);
 
-                // 获取 existing latest.json SHA
+                // 获取 existing latest.json SHA，重新获取避免冲突
                 var latestSha = null;
                 try {
                     var latestFile = await getGitHubFile('latest.json');
@@ -1345,8 +1357,18 @@
                 } catch (e) {
                     console.log('latest.json 不存在，将创建新文件');
                 }
-
-                await uploadToGitHub('latest.json', latestContent, latestSha, '更新最新版本指针 → ' + newVersion);
+                try {
+                    await uploadToGitHub('latest.json', latestContent, latestSha, '更新最新版本指针 → ' + newVersion);
+                } catch (e) {
+                    // 如果 SHA 冲突，重新获取并重试一次
+                    if (e.message && e.message.indexOf('does not match') >= 0) {
+                        console.log('latest.json SHA 冲突，重新获取...');
+                        var retryLatest = await getGitHubFile('latest.json');
+                        await uploadToGitHub('latest.json', latestContent, retryLatest.sha, '更新最新版本指针 → ' + newVersion);
+                    } else {
+                        throw e;
+                    }
+                }
 
                 // 8. 更新界面
                 updateVersionDisplay(newVersion);
