@@ -1,8 +1,7 @@
 {
   "version": "6.72.1",
   "path": "6.72",
-  "scheduleFile": "schedule_6.72.1_202604271121.csv",
-  "settingsFile": "settings_6.72.1_202604271121.json",
-  "timestamp": "202604271121",
-  "updateTime": "2026/4/27 11:21:51"
+  "scheduleFile": "schedule_6.72.1_202604271909.csv",
+  "timestamp": "202604271909",
+  "updateTime": "2026/4/27 19:09:40"
 }
