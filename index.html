@@ -1801,14 +1801,11 @@
                 document.addEventListener('keydown', function(e) {
                     if (e.ctrlKey || e.metaKey) {
                         var key = e.key.toLowerCase();
-                        console.log('按键:', key, '撤销栈长度:', _undoStack.length);
                         if (key === 'z') {
                             e.preventDefault();
-                            console.log('执行撤销');
                             undo();
                         } else if (key === 'y') {
                             e.preventDefault();
-                            console.log('执行重做');
                             redo();
                         }
                     }
