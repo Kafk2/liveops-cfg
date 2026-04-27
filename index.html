@@ -1959,6 +1959,7 @@
                             html += '<div>';
                             if (!isCurrent) {
                                 html += '<button class="btn btn-secondary btn-sm" style="margin-right:5px;" onclick="loadVersionFromGitHub(\'' + dir + '\', \'' + file.version + '\', \'' + file.name + '\')">切换</button>';
+                                html += '<button class="btn btn-danger btn-sm" onclick="deleteVersionFromGitHub(\'' + dir + '\', \'' + file.name + '\')">删除</button>';
                             }
                             html += '</div>';
                             html += '</div>';
@@ -2038,6 +2039,51 @@
             } catch (e) {
                 console.error('加载版本失败:', e);
                 tlShowToast('❌ 加载版本失败: ' + e.message, 'error');
+            }
+        }
+
+        // 从 GitHub 删除指定版本文件
+        async function deleteVersionFromGitHub(versionDir, scheduleFileName) {
+            if (!confirm('确定要删除版本文件 ' + scheduleFileName + ' 吗？\n此操作不可撤销！')) {
+                return;
+            }
+
+            try {
+                // 获取文件的 SHA
+                var filePath = _githubConfig.path + '/' + versionDir + '/' + scheduleFileName;
+                var file = await getGitHubFile(filePath, true);
+
+                // 删除文件
+                var url = 'https://api.github.com/repos/' + _githubConfig.owner + '/' + _githubConfig.repo +
+                    '/contents/' + filePath;
+
+                var response = await fetch(url, {
+                    method: 'DELETE',
+                    headers: {
+                        'Authorization': 'token ' + _githubConfig.token,
+                        'Accept': 'application/vnd.github.v3+json',
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        message: '删除版本文件 ' + scheduleFileName,
+                        sha: file.sha,
+                        branch: _githubConfig.branch
+                    })
+                });
+
+                if (!response.ok) {
+                    var error = await response.json();
+                    throw new Error(error.message || '删除失败');
+                }
+
+                tlShowToast('✅ 已删除版本文件 ' + scheduleFileName, 'success');
+
+                // 刷新版本列表
+                await refreshVersionList();
+
+            } catch (e) {
+                console.error('删除版本失败:', e);
+                tlShowToast('❌ 删除失败: ' + e.message, 'error');
             }
         }
 
