@@ -273,7 +273,7 @@
     "typeGroupCollapsed": {
       "festival": false,
       "gift": false,
-      "feature": true,
+      "feature": false,
       "default": false,
       "集卡活动": false,
       "长线活动": true,
