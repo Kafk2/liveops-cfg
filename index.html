@@ -1854,8 +1854,10 @@
                 return [];
             }
 
+            // 添加时间戳参数避免缓存
+            var cacheBuster = '_t=' + Date.now();
             var url = 'https://api.github.com/repos/' + _githubConfig.owner + '/' + _githubConfig.repo +
-                '/contents/' + _githubConfig.path + '?ref=' + _githubConfig.branch;
+                '/contents/' + _githubConfig.path + '?ref=' + _githubConfig.branch + '&' + cacheBuster;
 
             var response = await fetch(url, {
                 headers: {
@@ -1882,8 +1884,10 @@
 
         // 获取版本文件列表
         async function fetchVersionFilesFromGitHub(versionDir) {
+            // 添加时间戳参数避免缓存
+            var cacheBuster = '_t=' + Date.now();
             var url = 'https://api.github.com/repos/' + _githubConfig.owner + '/' + _githubConfig.repo +
-                '/contents/' + _githubConfig.path + '/' + versionDir + '?ref=' + _githubConfig.branch;
+                '/contents/' + _githubConfig.path + '/' + versionDir + '?ref=' + _githubConfig.branch + '&' + cacheBuster;
 
             var response = await fetch(url, {
                 headers: {
