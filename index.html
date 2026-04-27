@@ -1953,7 +1953,7 @@
                             var isCurrent = file.version === currentVersion;
                             var timestampFormatted = formatTimestamp(file.timestamp);
 
-                            html += '<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #f0f0f0;' + (isCurrent ? 'background:#e6f7ff;margin:0 -12px;padding:6px 12px;' : '') + '">';
+                            html += '<div data-version-file="' + file.name + '" style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #f0f0f0;' + (isCurrent ? 'background:#e6f7ff;margin:0 -12px;padding:6px 12px;' : '') + '">';
                             html += '<div>';
                             html += '<span style="font-weight:500;">' + file.version + '</span>';
                             if (isCurrent) {
@@ -2053,6 +2053,12 @@
                 return;
             }
 
+            // 先从UI移除元素，让用户立即看到变化
+            var versionItems = document.querySelectorAll('[data-version-file="' + scheduleFileName + '"]');
+            versionItems.forEach(function(item) {
+                item.remove();
+            });
+
             try {
                 // 获取文件的 SHA
                 var filePath = _githubConfig.path + '/' + versionDir + '/' + scheduleFileName;
@@ -2083,12 +2089,16 @@
 
                 tlShowToast('✅ 已删除版本文件 ' + scheduleFileName, 'success');
 
-                // 刷新版本列表
-                await refreshVersionList();
+                // 延迟刷新版本列表，确保 GitHub 缓存更新
+                setTimeout(function() {
+                    refreshVersionList();
+                }, 500);
 
             } catch (e) {
                 console.error('删除版本失败:', e);
                 tlShowToast('❌ 删除失败: ' + e.message, 'error');
+                // 删除失败时刷新列表恢复UI
+                refreshVersionList();
             }
         }
 
