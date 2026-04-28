@@ -1642,9 +1642,39 @@
                     basePath = location.href.substring(0, location.href.lastIndexOf('/') + 1);
                 }
 
+                // 先尝试从 latest.json 获取最新版本信息
+                var latestVersion = null;
+                try {
+                    var latestResp = await fetch(basePath + 'data/latest.json');
+                    if (latestResp.ok) {
+                        var latestData = await latestResp.json();
+                        latestVersion = latestData.version;
+                        console.log('最新版本:', latestVersion);
+                    }
+                } catch (e) {
+                    console.log('无法加载 latest.json，使用默认路径');
+                }
+
                 var scheduleText, settingsText;
 
-                if (location.protocol === 'file:') {
+                if (latestVersion) {
+                    // 从版本目录加载
+                    var versionDir = latestVersion.split('.').slice(0, 2).join('.');
+                    var latestResp = await fetch(basePath + 'data/latest.json');
+                    var latestData = await latestResp.json();
+
+                    var scheduleResp = await fetch(basePath + 'data/' + versionDir + '/' + latestData.scheduleFile);
+                    if (!scheduleResp.ok) throw new Error('无法加载 ' + latestData.scheduleFile + ': ' + scheduleResp.status);
+                    scheduleText = await scheduleResp.text();
+
+                    var settingsResp = await fetch(basePath + 'data/settings.json');
+                    if (!settingsResp.ok) throw new Error('无法加载 settings.json: ' + settingsResp.status);
+                    settingsText = await settingsResp.text();
+
+                    // 更新版本显示
+                    localStorage.setItem('currentVersion', latestVersion);
+                    updateVersionDisplay(latestVersion);
+                } else if (location.protocol === 'file:') {
                     var scheduleResp = await fetch(basePath + 'data/schedule.csv');
                     if (!scheduleResp.ok) throw new Error('无法加载 schedule.csv: ' + scheduleResp.status);
                     scheduleText = await scheduleResp.text();
@@ -1669,8 +1699,8 @@
                 // 保存数据快照用于检测本地修改
                 _loadedDataSnapshot = JSON.stringify({ schedule: schedule, settings: settings });
 
-                console.log('加载 schedule.csv:', schedule.length, '条配置');
-                console.log('加载 settings.json:', settings);
+                console.log('加载 schedule:', schedule.length, '条配置');
+                console.log('加载 settings:', settings);
 
                 return { schedule: schedule, settings: settings };
             } catch (e) {
