@@ -279,7 +279,7 @@
       "长线活动": false,
       "节日活动": false,
       "促活活动": false,
-      "深度活动": true,
+      "深度活动": false,
       "副棋盘": true
     },
     "mergeGroups": [
