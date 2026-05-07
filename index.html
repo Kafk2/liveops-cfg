@@ -1249,24 +1249,60 @@
             }
 
             try {
-                // 获取 schedule.csv
-                var scheduleFile = await getGitHubFile('schedule.csv');
-                var scheduleContent = decodeBase64(scheduleFile.content);
-                var schedule = parseCSV(scheduleContent);
+                var schedule = null;
+                var settings = null;
+                var latestData = null;
 
-                // 获取 settings.json
+                // 1. 尝试从 latest.json 获取版本指针
+                try {
+                    var latestFile = await getGitHubFile('latest.json');
+                    latestData = JSON.parse(decodeBase64(latestFile.content));
+                    console.log('latest.json 指向:', latestData.scheduleFile);
+                } catch (e) {
+                    console.log('latest.json 不存在或无法读取');
+                }
+
+                // 2. 如果有指针，尝试加载指针指向的文件
+                if (latestData && latestData.path && latestData.scheduleFile) {
+                    try {
+                        var versionedFile = await getGitHubFile(latestData.path + '/' + latestData.scheduleFile, true);
+                        var content = decodeBase64(versionedFile.content);
+                        schedule = parseCSV(content);
+                        console.log('从版本文件加载成功:', latestData.scheduleFile);
+                    } catch (e) {
+                        console.warn('指针文件不存在，尝试查找最新文件:', e.message);
+                        latestData = null;
+                    }
+                }
+
+                // 3. 指针失效时，扫描版本目录找到最新文件
+                if (!schedule) {
+                    var recovered = await recoverLatestSchedule();
+                    if (recovered) {
+                        schedule = recovered.schedule;
+                        latestData = recovered.latestData;
+                    } else {
+                        // 最后回退：读取根目录 schedule.csv
+                        var fallbackFile = await getGitHubFile('schedule.csv');
+                        schedule = parseCSV(decodeBase64(fallbackFile.content));
+                        console.log('回退到根目录 schedule.csv');
+                    }
+                }
+
+                // 4. 获取 settings.json
                 var settingsFile = await getGitHubFile('settings.json');
-                var settingsContent = decodeBase64(settingsFile.content);
-                var settings = JSON.parse(settingsContent);
+                settings = JSON.parse(decodeBase64(settingsFile.content));
 
-                // 更新本地数据
+                // 5. 更新本地数据
                 _dataCache = schedule;
                 _settingsCache = settings;
-
-                // 更新数据快照（加载后不再视为本地修改）
                 _loadedDataSnapshot = JSON.stringify({ schedule: schedule, settings: settings });
 
-                // 更新 UI
+                if (latestData && latestData.version) {
+                    localStorage.setItem('currentVersion', latestData.version);
+                    updateVersionDisplay(latestData.version);
+                }
+
                 renderConfigList();
                 tlRender();
 
@@ -1274,6 +1310,100 @@
             } catch (e) {
                 console.error('从 GitHub 加载失败:', e);
                 throw e;
+            }
+        }
+
+        // 扫描版本目录，找到最新的 schedule 文件并修复 latest.json
+        async function recoverLatestSchedule() {
+            try {
+                // 列出 data 目录内容
+                var dataDir = await listGitHubDirectory(_githubConfig.path);
+                // 找到所有版本目录（如 6.72, 6.70）
+                var versionDirs = dataDir
+                    .filter(function(item) { return item.type === 'dir' && /^\d+\.\d+$/.test(item.name); })
+                    .sort(function(a, b) {
+                        var va = a.name.split('.').map(Number);
+                        var vb = b.name.split('.').map(Number);
+                        return (vb[0] - va[0]) || (vb[1] - va[1]);
+                    });
+
+                if (versionDirs.length === 0) return null;
+
+                // 从最新版本目录开始查找
+                for (var i = 0; i < versionDirs.length; i++) {
+                    var dir = versionDirs[i];
+                    var files = await listGitHubDirectory(_githubConfig.path + '/' + dir.name);
+                    var scheduleFiles = files
+                        .filter(function(f) { return f.type === 'file' && f.name.startsWith('schedule_'); })
+                        .sort(function(a, b) { return b.name.localeCompare(a.name); });
+
+                    if (scheduleFiles.length > 0) {
+                        var latestFile = scheduleFiles[0];
+                        // 从文件名解析版本号: schedule_6.72.6_202604281618.csv
+                        var match = latestFile.name.match(/^schedule_([\d.]+)_(\d+)\.csv$/);
+                        var version = match ? match[1] : dir.name + '.0';
+                        var timestamp = match ? match[2] : '';
+
+                        // 加载该文件
+                        var fileData = await getGitHubFile(dir.name + '/' + latestFile.name, true);
+                        var schedule = parseCSV(decodeBase64(fileData.content));
+
+                        var newLatestData = {
+                            version: version,
+                            path: dir.name,
+                            scheduleFile: latestFile.name,
+                            timestamp: timestamp,
+                            updateTime: new Date().toLocaleString('zh-CN')
+                        };
+
+                        // 修复 latest.json 指针
+                        await fixLatestPointer(newLatestData);
+
+                        console.log('恢复成功，最新文件:', latestFile.name);
+                        return { schedule: schedule, latestData: newLatestData };
+                    }
+                }
+
+                return null;
+            } catch (e) {
+                console.error('恢复最新配置失败:', e);
+                return null;
+            }
+        }
+
+        // 列出 GitHub 目录内容
+        async function listGitHubDirectory(path) {
+            var url = 'https://api.github.com/repos/' + _githubConfig.owner + '/' + _githubConfig.repo +
+                '/contents/' + path + '?ref=' + _githubConfig.branch;
+
+            var response = await fetch(url, {
+                headers: {
+                    'Authorization': 'token ' + _githubConfig.token,
+                    'Accept': 'application/vnd.github.v3+json'
+                }
+            });
+
+            if (!response.ok) {
+                throw new Error('列出目录失败: ' + response.status);
+            }
+
+            return await response.json();
+        }
+
+        // 修复 latest.json 指针
+        async function fixLatestPointer(newLatestData) {
+            try {
+                var latestContent = JSON.stringify(newLatestData, null, 2);
+                var latestSha = null;
+                try {
+                    var existing = await getGitHubFile('latest.json');
+                    latestSha = existing.sha;
+                } catch (e) {}
+
+                await uploadToGitHub('latest.json', latestContent, latestSha, '自动修复版本指针 → ' + newLatestData.version);
+                console.log('latest.json 指针已修复为:', newLatestData.version);
+            } catch (e) {
+                console.warn('修复 latest.json 失败（非致命）:', e.message);
             }
         }
 
@@ -1643,52 +1773,52 @@
                 }
 
                 // 先尝试从 latest.json 获取最新版本信息
-                var latestVersion = null;
+                var latestData = null;
                 try {
                     var latestResp = await fetch(basePath + 'data/latest.json');
                     if (latestResp.ok) {
-                        var latestData = await latestResp.json();
-                        latestVersion = latestData.version;
-                        console.log('最新版本:', latestVersion);
+                        latestData = await latestResp.json();
+                        console.log('最新版本:', latestData.version);
                     }
                 } catch (e) {
                     console.log('无法加载 latest.json，使用默认路径');
                 }
 
                 var scheduleText, settingsText;
+                var loadedVersion = null;
 
-                if (latestVersion) {
-                    // 从版本目录加载
-                    var versionDir = latestVersion.split('.').slice(0, 2).join('.');
-                    var latestResp = await fetch(basePath + 'data/latest.json');
-                    var latestData = await latestResp.json();
-
+                if (latestData && latestData.path && latestData.scheduleFile) {
+                    // 尝试加载指针指向的文件
+                    var versionDir = latestData.path;
                     var scheduleResp = await fetch(basePath + 'data/' + versionDir + '/' + latestData.scheduleFile);
-                    if (!scheduleResp.ok) throw new Error('无法加载 ' + latestData.scheduleFile + ': ' + scheduleResp.status);
-                    scheduleText = await scheduleResp.text();
 
-                    var settingsResp = await fetch(basePath + 'data/settings.json');
-                    if (!settingsResp.ok) throw new Error('无法加载 settings.json: ' + settingsResp.status);
-                    settingsText = await settingsResp.text();
-
-                    // 更新版本显示
-                    localStorage.setItem('currentVersion', latestVersion);
-                    updateVersionDisplay(latestVersion);
-                } else if (location.protocol === 'file:') {
-                    var scheduleResp = await fetch(basePath + 'data/schedule.csv');
-                    if (!scheduleResp.ok) throw new Error('无法加载 schedule.csv: ' + scheduleResp.status);
-                    scheduleText = await scheduleResp.text();
-                    var settingsResp = await fetch(basePath + 'data/settings.json');
-                    if (!settingsResp.ok) throw new Error('无法加载 settings.json: ' + settingsResp.status);
-                    settingsText = await settingsResp.text();
-                } else {
-                    var scheduleResp = await fetch('data/schedule.csv');
-                    if (!scheduleResp.ok) throw new Error('无法加载 schedule.csv: ' + scheduleResp.status);
-                    scheduleText = await scheduleResp.text();
-                    var settingsResp = await fetch('data/settings.json');
-                    if (!settingsResp.ok) throw new Error('无法加载 settings.json: ' + settingsResp.status);
-                    settingsText = await settingsResp.text();
+                    if (scheduleResp.ok) {
+                        scheduleText = await scheduleResp.text();
+                        loadedVersion = latestData.version;
+                    } else {
+                        // 指针文件不存在，扫描目录找最新文件
+                        console.warn('指针文件不存在:', latestData.scheduleFile, '，尝试查找最新文件');
+                        var recovered = await recoverLatestScheduleLocal(basePath, versionDir);
+                        if (recovered) {
+                            scheduleText = recovered.text;
+                            loadedVersion = recovered.version;
+                        }
+                    }
                 }
+
+                // 如果版本加载失败，回退到根目录 schedule.csv
+                if (!scheduleText) {
+                    var fallbackPath = (location.protocol === 'file:') ? basePath + 'data/schedule.csv' : 'data/schedule.csv';
+                    var scheduleResp = await fetch(fallbackPath);
+                    if (!scheduleResp.ok) throw new Error('无法加载 schedule.csv: ' + scheduleResp.status);
+                    scheduleText = await scheduleResp.text();
+                }
+
+                // 加载 settings.json
+                var settingsPath = (location.protocol === 'file:') ? basePath + 'data/settings.json' : 'data/settings.json';
+                var settingsResp = await fetch(settingsPath);
+                if (!settingsResp.ok) throw new Error('无法加载 settings.json: ' + settingsResp.status);
+                settingsText = await settingsResp.text();
 
                 var schedule = parseCSV(scheduleText);
                 var settings = JSON.parse(settingsText);
@@ -1699,13 +1829,17 @@
                 // 保存数据快照用于检测本地修改
                 _loadedDataSnapshot = JSON.stringify({ schedule: schedule, settings: settings });
 
+                if (loadedVersion) {
+                    localStorage.setItem('currentVersion', loadedVersion);
+                    updateVersionDisplay(loadedVersion);
+                }
+
                 console.log('加载 schedule:', schedule.length, '条配置');
                 console.log('加载 settings:', settings);
 
                 return { schedule: schedule, settings: settings };
             } catch (e) {
                 console.error('加载数据文件失败:', e);
-                // 显示提示：需要通过本地服务器访问，或手动导入
                 var hint = document.getElementById('dataLoadHint');
                 if (hint) {
                     hint.style.display = 'block';
@@ -1713,6 +1847,27 @@
                 }
                 return { schedule: [], settings: getDefaultSettings() };
             }
+        }
+
+        // 本地模式下扫描版本目录找最新 schedule 文件
+        async function recoverLatestScheduleLocal(basePath, versionDir) {
+            // 本地/HTTP 模式无法列目录枚举文件名
+            // 如果配置了 GitHub，通过 API 恢复并获取文件内容
+            if (isGitHubConfigured()) {
+                try {
+                    var recovered = await recoverLatestSchedule();
+                    if (recovered) {
+                        // recoverLatestSchedule 返回 parsed schedule，需要重新获取原始文本
+                        var fileData = await getGitHubFile(recovered.latestData.path + '/' + recovered.latestData.scheduleFile, true);
+                        var text = decodeBase64(fileData.content);
+                        return { text: text, version: recovered.latestData.version };
+                    }
+                } catch (e) {
+                    console.warn('通过 GitHub API 恢复失败:', e.message);
+                }
+            }
+
+            return null;
         }
 
         // 获取默认设置
