@@ -571,7 +571,7 @@
         }
         .t-group-arrow.collapsed { transform: rotate(0deg); }
         .t-group-arrow.expanded { transform: rotate(90deg); }
-        .t-row { display: flex; border-bottom: 1px solid #d8d8d8; height: var(--tl-row-height, 36px); position: relative; }
+        .t-row { display: flex; border-bottom: 1px solid #d8d8d8; height: var(--tl-row-height, 29px); position: relative; }
         .t-row.t-hidden { display: none; }
         .t-row-label {
             width: 220px; flex-shrink: 0; padding: 0 12px;
@@ -581,7 +581,7 @@
         }
         .t-row-bars { position: relative; flex: 1; height: 100%; overflow: hidden; }
         .bar {
-            position: absolute; top: 2px; height: var(--tl-bar-height, 32px); border-radius: 4px;
+            position: absolute; top: 2px; height: var(--tl-bar-height, 25px); border-radius: 4px;
             font-size: 11px; display: flex; align-items: center;
             padding: 0 8px; white-space: nowrap; overflow: hidden;
             text-overflow: ellipsis; cursor: pointer;
@@ -876,7 +876,7 @@
                                 <span class="tl-toggle-label">已停止</span>
                             </button>
                             <button class="btn-today" onclick="tlToggleFullscreen()" title="全屏显示时间轴" style="font-size:16px;padding:4px 8px;">⛶</button>
-                            <input type="range" id="tlRowHeightSlider" min="18" max="36" value="36" title="行高" style="width:60px;vertical-align:middle;margin-left:6px;cursor:pointer;" oninput="tlSetRowHeight(this.value)">
+                            <input type="range" id="tlRowHeightSlider" min="18" max="36" value="29" title="行高" style="width:60px;vertical-align:middle;margin-left:6px;cursor:pointer;" oninput="tlSetRowHeight(this.value)">
                         </div>
                         <div style="display:flex;align-items:center;gap:8px;">
                             <!-- 胶囊滑块: 控制时间轴缩放级别 (Hours/Days/Weeks) -->
@@ -6002,7 +6002,7 @@
                         + ' onmousemove="tlMoveTip(event)"'
                         + ' onmouseleave="tlHideTip()"'
                         + ' onclick="tlSelectBar(this,\''+pConfigId+'\')"'
-                        + '>'+activeOverlay+'<span'+spanStyle+'>'+escapeHtml(pName)+' 第'+p.period+'期</span></div>';
+                        + '>'+activeOverlay+'<span'+spanStyle+'>'+(p.period === 1 ? '<span style="font-size:0.85em;margin-right:2px;">🆕</span>' : '')+escapeHtml(pName)+' 第'+p.period+'期</span></div>';
                 });
                 re.barsEl.innerHTML = html;
             });
